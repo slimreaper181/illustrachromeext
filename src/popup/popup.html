@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Illustra Capture</title>
+    <link rel="stylesheet" href="popup.css" />
+  </head>
+  <body>
+    <div class="app">
+      <header class="app-header">
+        <div class="brand">
+          <span class="brand-mark" aria-hidden="true">I</span>
+          <h1>Illustra</h1>
+        </div>
+        <p class="subheading">Capture anything worth learning.</p>
+      </header>
+
+      <div class="toolbar">
+        <span id="capture-count" class="capture-count"></span>
+        <button id="clear-all-btn" type="button" class="text-btn">Clear all</button>
+      </div>
+
+      <main id="capture-list" class="capture-list" aria-live="polite">
+        <!-- Capture cards or empty state are rendered here by popup.ts -->
+      </main>
+    </div>
+
+    <template id="capture-card-template">
+      <article class="capture-card">
+        <p class="capture-text"></p>
+        <div class="capture-note-row">
+          <p class="capture-note"></p>
+        </div>
+        <div class="capture-meta">
+          <span class="capture-title"></span>
+          <span class="capture-dot" aria-hidden="true">·</span>
+          <span class="capture-host"></span>
+          <span class="capture-dot" aria-hidden="true">·</span>
+          <time class="capture-time"></time>
+        </div>
+        <div class="capture-actions">
+          <button type="button" class="text-btn note-btn">Add note</button>
+          <button type="button" class="text-btn danger delete-btn">Delete</button>
+        </div>
+        <div class="note-editor" hidden>
+          <textarea
+            class="note-input"
+            maxlength="500"
+            placeholder="e.g. Professor mentioned this in Lecture 4."
+          ></textarea>
+          <div class="note-editor-actions">
+            <button type="button" class="text-btn cancel-note-btn">Cancel</button>
+            <button type="button" class="primary-btn save-note-btn">Save note</button>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <template id="empty-state-template">
+      <div class="empty-state">
+        <p class="empty-title">Highlight something worth remembering.</p>
+        <p class="empty-subtitle">Your captures will appear here.</p>
+      </div>
+    </template>
+
+    <script type="module" src="popup.js"></script>
+  </body>
+</html>
