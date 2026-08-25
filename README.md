@@ -40,6 +40,15 @@ captures locally on the student's machine using `chrome.storage.local`.
 - **Plain-text rendering** — all captured/user content is rendered with
   `textContent`, never `innerHTML`, so HTML- or script-looking captured
   text can never execute in the popup.
+- **Processing intention (Keep Original / AI Enhance)** — a lightweight
+  toggle on each capture card records what the student wants done with
+  it later. This is stored intent only — no AI call happens, and the
+  original text is never touched by this choice.
+- **Sync-ready data model + backend integration boundary** — every
+  capture carries sync bookkeeping (`syncStatus`, `remoteId`,
+  `lastSyncAttempt`, `syncError`) and a subtle status pill shows it in
+  the popup. There is no real backend behind this yet — see
+  [Backend-readiness](#backend-readiness-no-real-backend-yet) below.
 
 ### What's intentionally *not* built yet
 
@@ -60,12 +69,16 @@ illustrachromeext/
 ├── tsconfig.json
 ├── build.mjs                  # esbuild-based build script
 ├── icons/                     # placeholder brand icons (16/48/128)
+├── docs/
+│   └── BACKEND_INTEGRATION.md # proposed (not implemented) backend contract + open questions
 ├── src/
 │   ├── shared/
-│   │   ├── types.ts           # Capture data model
-│   │   ├── constants.ts       # storage key, limits, menu id
+│   │   ├── types.ts           # Capture data model (incl. sync fields)
+│   │   ├── constants.ts       # storage key, limits, menu id, defaults
 │   │   ├── id.ts              # unique capture ID generation
-│   │   └── storage.ts         # typed chrome.storage.local abstraction
+│   │   ├── storage.ts         # typed chrome.storage.local abstraction + sync queue helpers
+│   │   ├── sync.ts            # CaptureSyncService boundary + NoopCaptureSyncService placeholder
+│   │   └── auth.ts            # AuthState placeholder types (no real auth)
 │   ├── background/
 │   │   ├── background.ts      # service worker entry point / wiring
 │   │   ├── contextMenu.ts     # "Save to Illustra" menu registration
@@ -73,7 +86,7 @@ illustrachromeext/
 │   └── popup/
 │       ├── popup.html
 │       ├── popup.css          # Illustra visual system
-│       └── popup.ts           # renders/edits/deletes captures
+│       └── popup.ts           # renders/edits/deletes captures, mode toggle, sync status
 └── dist/                      # build output — load THIS folder into Chrome (git-ignored)
 ```
 
@@ -86,19 +99,39 @@ it. Nothing calls the raw `chrome.storage` API outside of `storage.ts`.
 ### Data model
 
 ```ts
+export type CaptureMode = "original" | "enhance";
+
+export type SyncStatus = "local" | "pending" | "syncing" | "synced" | "failed";
+
 export interface Capture {
   id: string;
-  text: string;        // immutable — the original highlighted text
-  note?: string;        // separate, optional, student-authored
+  text: string;               // immutable — the original highlighted text
+  note?: string;                // separate, optional, student-authored
   sourceTitle: string;
   sourceUrl: string;
-  createdAt: string;    // ISO 8601
+  createdAt: string;           // ISO 8601
+
+  mode: CaptureMode;            // stored intent only — no AI is ever called
+  syncStatus: SyncStatus;       // "local" today; nothing promotes it further yet
+  remoteId?: string;
+  lastSyncAttempt?: string;
+  syncError?: string;
 }
 ```
 
 `text` is never edited after creation. Notes are a distinct field, set
 independently via `setCaptureNote()`, so the original source material
-and the student's own annotation can never be conflated.
+and the student's own annotation can never be conflated. `mode` is set
+independently too, via `setCaptureMode()` — choosing "AI Enhance" never
+touches `text` and never calls any AI provider.
+
+**Migration:** captures saved by the original MVP predate the `mode` /
+`syncStatus` / `remoteId` / `lastSyncAttempt` / `syncError` fields.
+`shared/storage.ts` normalizes every record read from storage, filling
+`mode: "original"` and `syncStatus: "local"` for anything missing them,
+without ever touching `text`, `note`, or dropping a capture for
+predating the new schema. See [Backend-readiness](#backend-readiness-no-real-backend-yet)
+below for the sync-related fields.
 
 ### Chosen limits (documented, tunable in `src/shared/constants.ts`)
 
@@ -111,6 +144,41 @@ and the student's own annotation can never be conflated.
   captures; older ones are dropped automatically. This is a temporary
   inbox, not permanent storage.
 - **`MAX_NOTE_LENGTH = 500`** characters for a personal note.
+
+### Backend-readiness (no real backend yet)
+
+The extension is **local-first**: `shared/storage.ts` persists a
+capture to `chrome.storage.local` the instant it's created, before any
+sync is even considered. A capture is never lost or delayed because
+sync is unconfigured, offline, or failing.
+
+- **`shared/sync.ts`** defines the integration boundary — a
+  `CaptureSyncService` interface with one method,
+  `syncCapture(capture): Promise<SyncResult>` — and ships a
+  `NoopCaptureSyncService` that makes **zero network requests** and
+  always reports `{ success: false, reason: "BACKEND_NOT_CONFIGURED" }`.
+  It never fakes a successful save. Swapping in a real backend later is
+  a one-line change (replace what `defaultSyncService` is set to);
+  nothing else in the extension needs to change.
+- **`shared/storage.ts`** also exposes sync-queue helpers
+  (`getCapturesNeedingSync`, `markCaptureSyncing`, `markCaptureSynced`,
+  `markCaptureSyncFailed`, `enqueueCaptureForSync`) so a future engineer
+  can find pending/failed captures, retry them, and record outcomes —
+  see `syncPendingCaptures()` in `sync.ts` for a ready single-pass queue
+  runner. **Nothing calls this today** — there's no sign-in event or
+  backend yet to trigger it, and wiring an automatic retry loop before
+  those exist was explicitly out of scope for this milestone.
+- **`shared/auth.ts`** defines a minimal `AuthState` shape
+  (`"unknown" | "signed-out" | "signed-in"`) for future auth work to
+  target. The extension only ever produces `"signed-out"` today — there
+  is no login, no token storage, and no Supabase client anywhere in this
+  codebase.
+- The popup shows each capture's sync state as a small, calm pill
+  ("Saved locally", "Pending sync", "Syncing…", "Synced", "Sync failed ·
+  saved locally") — every capture reads "Saved locally" today, since
+  that's the only reachable state.
+- Full proposed wire contract and open questions for the backend/CTO
+  team: [`docs/BACKEND_INTEGRATION.md`](docs/BACKEND_INTEGRATION.md).
 
 ## 4. Chrome permissions used (and why)
 
@@ -180,12 +248,25 @@ For iterative development, `npm run watch` rebuilds on file changes
    as plain text in the popup (never execute).
 10. Close and reopen the popup, switch tabs, or restart Chrome —
     captures should still be there.
+11. On a capture card, click **AI Enhance** then **Keep Original** —
+    confirm the active state toggles and the captured text never
+    changes.
+12. Check the small status pill on any capture — it should read "Saved
+    locally" (the only reachable state today) and never look alarming.
+13. Seed a capture from an older extension version (or an object missing
+    `mode`/`syncStatus`) directly in `chrome.storage.local` via
+    `chrome://extensions` → service worker devtools, then reopen the
+    popup — it should load normally with "Keep Original" / "Saved
+    locally" as defaults.
 
 This flow (menu registration, storage persistence, note editing,
-delete, two-step clear-all, and safe rendering of HTML-/script-looking
-and Unicode/emoji text) has been exercised end-to-end in a headless
+delete, two-step clear-all, mode toggling, sync-status display, legacy
+data migration, and safe rendering of HTML-/script-looking and
+Unicode/emoji text) has been exercised end-to-end in a headless
 Chromium instance with the built `dist/` extension loaded, with no
-console or runtime errors.
+console or runtime errors, plus a Node-side unit pass over the storage
+and sync queue logic directly. See `docs/BACKEND_INTEGRATION.md` for
+what is and isn't wired up on the sync side.
 
 ## 9. Current limitations
 
@@ -196,9 +277,15 @@ console or runtime errors.
   exposing a right-click "selection" context, which those pages
   generally don't.
 - No sync across devices — captures live only in this browser's local
-  `chrome.storage.local`.
+  `chrome.storage.local`. The data model and a `CaptureSyncService`
+  boundary are ready for this (see
+  [Backend-readiness](#backend-readiness-no-real-backend-yet)), but no
+  real backend is connected.
 - No account, login, or backend — this is a local-only inbox.
-- No AI processing of any kind yet.
+  `AuthState` types exist for future work; nothing produces a
+  signed-in state today.
+- No AI processing of any kind yet. "AI Enhance" only records the
+  student's intention.
 - No editing of the original captured text (by design — it stays
   immutable; only notes are editable).
 - Capture text over 5000 characters is trimmed (see §3 for rationale).
@@ -206,8 +293,10 @@ console or runtime errors.
 ## 10. Planned future capabilities
 
 Per the product vision, later milestones will add, after a capture is
-saved: **Keep Original**, **AI Enhance**, **Turn into structured
-notes**, **Explain**, **Summarise**, **Create flashcards**, and
-**Generate quiz questions**, plus Illustra account login and backend
-sync so captures follow the student across devices. None of this is
-implemented in this MVP.
+saved: **Turn into structured notes**, **Explain**, **Summarise**,
+**Create flashcards**, and **Generate quiz questions** (triggered by a
+capture's `mode`), plus Illustra account login and a real backend
+implementation of `CaptureSyncService` (Supabase or an Illustra API — see
+`docs/BACKEND_INTEGRATION.md`) so captures follow the student across
+devices. None of this is implemented yet — this milestone only prepared
+the extension-side data model and integration boundary for it.

@@ -1,8 +1,9 @@
-import type { Capture } from "../shared/types";
+import type { Capture, CaptureMode, SyncStatus } from "../shared/types";
 import {
   getAllCaptures,
   deleteCapture,
   setCaptureNote,
+  setCaptureMode,
   clearAllCaptures,
 } from "../shared/storage";
 import { STORAGE_KEY } from "../shared/constants";
@@ -63,6 +64,8 @@ function buildCaptureCard(capture: Capture): HTMLElement {
   const noteInput = card.querySelector(".note-input") as HTMLTextAreaElement;
   const cancelNoteBtn = card.querySelector(".cancel-note-btn") as HTMLButtonElement;
   const saveNoteBtn = card.querySelector(".save-note-btn") as HTMLButtonElement;
+  const modeBtns = Array.from(card.querySelectorAll<HTMLButtonElement>(".mode-btn"));
+  const syncPill = card.querySelector(".sync-pill") as HTMLElement;
 
   // All values below are set via textContent / value, never innerHTML,
   // so captured page content — including anything that looks like
@@ -76,6 +79,25 @@ function buildCaptureCard(capture: Capture): HTMLElement {
   timeEl.dateTime = capture.createdAt;
   noteInput.value = capture.note ?? "";
   noteBtn.textContent = capture.note ? "Edit note" : "Add note";
+
+  for (const btn of modeBtns) {
+    const btnMode = btn.dataset.mode as CaptureMode;
+    const isActive = btnMode === capture.mode;
+    btn.setAttribute("aria-pressed", String(isActive));
+    btn.addEventListener("click", () => {
+      if (btnMode === capture.mode) return;
+      void (async () => {
+        await setCaptureMode(capture.id, btnMode);
+        await refresh();
+      })();
+    });
+  }
+
+  syncPill.textContent = syncStatusLabel(capture.syncStatus);
+  syncPill.className = `sync-pill status-${capture.syncStatus}`;
+  if (capture.syncStatus === "failed" && capture.syncError) {
+    syncPill.title = `Sync failed: ${capture.syncError}`;
+  }
 
   noteBtn.addEventListener("click", () => {
     noteEditor.hidden = !noteEditor.hidden;
@@ -102,6 +124,27 @@ function buildCaptureCard(capture: Capture): HTMLElement {
   });
 
   return card;
+}
+
+/**
+ * Student-facing copy for each sync state. Deliberately calm and
+ * unalarming — the absence of a backend is expected in this build, not
+ * an error state, so "failed" reads as informational rather than
+ * broken, and the local copy is never implied to be at risk.
+ */
+function syncStatusLabel(status: SyncStatus): string {
+  switch (status) {
+    case "local":
+      return "Saved locally";
+    case "pending":
+      return "Pending sync";
+    case "syncing":
+      return "Syncing…";
+    case "synced":
+      return "Synced";
+    case "failed":
+      return "Sync failed · saved locally";
+  }
 }
 
 function truncate(text: string, maxLength: number): string {

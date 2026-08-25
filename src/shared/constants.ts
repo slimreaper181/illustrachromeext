@@ -1,7 +1,19 @@
 // Shared, tunable constants for Illustra Capture.
 
+import type { CaptureMode, SyncStatus } from "./types";
+
 /** Key under which the capture list is stored in chrome.storage.local. */
 export const STORAGE_KEY = "illustra_captures";
+
+/** Mode assigned to a capture when the student hasn't chosen otherwise. */
+export const DEFAULT_CAPTURE_MODE: CaptureMode = "original";
+
+/**
+ * Sync status assigned to every new and migrated capture. This is the
+ * only reachable status until a real sync trigger (e.g. signing in to
+ * an Illustra account) is wired up — see shared/sync.ts.
+ */
+export const DEFAULT_SYNC_STATUS: SyncStatus = "local";
 
 /**
  * Maximum number of captures retained locally. This is a temporary

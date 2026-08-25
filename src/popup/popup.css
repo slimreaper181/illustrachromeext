@@ -185,6 +185,86 @@ body {
   display: none;
 }
 
+.capture-mode-row {
+  margin-top: 8px;
+  display: flex;
+  gap: 6px;
+}
+
+.mode-btn {
+  flex: 1;
+  text-align: center;
+  font-family: var(--font-sans);
+  font-size: 11.5px;
+  font-weight: 600;
+  padding: 6px 8px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--color-border-strong);
+  background: #ffffff;
+  color: var(--color-text-muted);
+  cursor: pointer;
+}
+
+.mode-btn:hover {
+  background: var(--color-surface-hover);
+}
+
+.mode-btn[aria-pressed="true"] {
+  background: var(--color-accent);
+  border-color: var(--color-accent);
+  color: #ffffff;
+}
+
+.mode-btn[aria-pressed="true"]:hover {
+  background: var(--color-accent-hover);
+  border-color: var(--color-accent-hover);
+}
+
+.capture-status-row {
+  margin-top: 7px;
+  display: flex;
+  justify-content: flex-end;
+}
+
+.sync-pill {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+}
+
+.sync-pill.status-local {
+  background: var(--color-surface);
+  color: var(--color-text-faint);
+  border-color: var(--color-border);
+}
+
+.sync-pill.status-pending {
+  background: #fff8e6;
+  color: #9a6b00;
+  border-color: #f0dca3;
+}
+
+.sync-pill.status-syncing {
+  background: var(--color-surface-hover);
+  color: var(--color-accent-hover);
+  border-color: var(--color-border-strong);
+}
+
+.sync-pill.status-synced {
+  background: #e8f7ee;
+  color: #1f7a43;
+  border-color: #bfe8cf;
+}
+
+.sync-pill.status-failed {
+  background: #fdf1ec;
+  color: #a3502b;
+  border-color: #f3cdb9;
+}
+
 .capture-meta {
   margin-top: 10px;
   display: flex;
